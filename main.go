@@ -329,6 +329,6 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("服务器强制关闭: %v", err)
 	} else {
-		log.Println("服务器已优雅关闭")
+		log.Println("服务器已优雅关闭！")
 	}
 }
