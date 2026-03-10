@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"restServer/handler"
 	"restServer/middleware"
 	"restServer/model"
 	"restServer/response"
@@ -116,9 +117,11 @@ func panicHandler(w http.ResponseWriter, r *http.Request) {
 // 需要鉴权的接口
 func protectedHandler(w http.ResponseWriter, r *http.Request) {
 	requestID := middleware.GetRequestID(r.Context())
+	username := middleware.GetUsername(r.Context())
 	response.Success(w, map[string]any{
 		"message":    "这是一个受保护的资源",
 		"request_id": requestID,
+		"username":   username,
 	})
 }
 
@@ -221,6 +224,9 @@ func timeoutTestHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// 设置 token 验证函数
+	middleware.SetTokenValidator(handler.GetUsernameByToken)
+
 	// 创建一个新的 ServeMux
 	mux := http.NewServeMux()
 
@@ -245,11 +251,43 @@ func main() {
 	mux.HandleFunc("/api/context-business", contextBusinessHandler)
 	mux.HandleFunc("/api/timeout-test", timeoutTestHandler)
 
+	// Day 7 路由 - REST 服务
+	// 公开接口（不需要鉴权）
+	mux.HandleFunc("/api/register", handler.Register)
+	mux.HandleFunc("/api/login", handler.Login)
+
+	// 受保护的接口（需要鉴权）- 使用独立的处理函数
+	mux.HandleFunc("/api/todos", func(w http.ResponseWriter, r *http.Request) {
+		middleware.Auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				handler.ListTodos(w, r)
+			case http.MethodPost:
+				handler.CreateTodo(w, r)
+			default:
+				response.Error(w, http.StatusMethodNotAllowed, 405, "Method not allowed")
+			}
+		})).ServeHTTP(w, r)
+	})
+
+	mux.HandleFunc("/api/todos/", func(w http.ResponseWriter, r *http.Request) {
+		middleware.Auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodPut:
+				handler.UpdateTodo(w, r)
+			case http.MethodDelete:
+				handler.DeleteTodo(w, r)
+			default:
+				response.Error(w, http.StatusMethodNotAllowed, 405, "Method not allowed")
+			}
+		})).ServeHTTP(w, r)
+	})
+
 	// 应用基础中间件链到整个 mux
-	// 链式顺序: Recovery -> RequestID -> Logger -> mux
-	handler := middleware.Recovery(
+	// 链式顺序: Logger -> RequestID -> Recovery -> mux
+	baseHandler := middleware.Logger(
 		middleware.RequestID(
-			middleware.Logger(mux),
+			middleware.Recovery(mux),
 		),
 	)
 
@@ -265,16 +303,16 @@ func main() {
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 如果是受保护的路由，先应用基础中间件，再应用鉴权
 		if r.URL.Path == "/api/protected" {
-			middleware.Recovery(
+			middleware.Logger(
 				middleware.RequestID(
-					middleware.Logger(
+					middleware.Recovery(
 						middleware.Auth(protectedHandlerFunc),
 					),
 				),
 			).ServeHTTP(w, r)
 		} else {
 			// 否则使用普通处理器
-			handler.ServeHTTP(w, r)
+			baseHandler.ServeHTTP(w, r)
 		}
 	})
 	server := &http.Server{
@@ -288,21 +326,28 @@ func main() {
 	// 启动服务器
 	go func() {
 		fmt.Println("Server is running on http://localhost:8080")
-		fmt.Println("\n=== Day 4 中间件测试接口 ===")
-		fmt.Println("公开接口:")
-		fmt.Println("  GET  /api/requestid - 测试 Request ID 中间件")
-		fmt.Println("  GET  /api/panic     - 测试 Recovery 中间件")
+		fmt.Println("\n=== Day 7: REST 服务接口 ===")
+		fmt.Println("\n公开接口:")
+		fmt.Println("  POST /api/register - 用户注册")
+		fmt.Println("  POST /api/login    - 用户登录")
 		fmt.Println("\n受保护接口 (需要 Token):")
-		fmt.Println("  GET  /api/protected - 测试鉴权中间件")
+		fmt.Println("  GET    /api/todos     - 获取 Todo 列表")
+		fmt.Println("  POST   /api/todos     - 创建 Todo")
+		fmt.Println("  PUT    /api/todos/:id - 更新 Todo")
+		fmt.Println("  DELETE /api/todos/:id - 删除 Todo")
 		fmt.Println("\n测试命令:")
-		fmt.Println("  # 测试 Request ID")
-		fmt.Println("  curl http://localhost:8080/api/requestid")
-		fmt.Println("\n  # 测试 Panic Recovery")
-		fmt.Println("  curl http://localhost:8080/api/panic")
-		fmt.Println("\n  # 测试鉴权失败")
-		fmt.Println("  curl http://localhost:8080/api/protected")
-		fmt.Println("\n  # 测试鉴权成功")
-		fmt.Println(`  curl -H "Authorization: Bearer my-secret-token-123456" http://localhost:8080/api/protected`)
+		fmt.Println("  # 1. 注册用户")
+		fmt.Println(`  curl -X POST http://localhost:8080/api/register -H "Content-Type: application/json" -d "{\"username\":\"testuser\",\"password\":\"123456\"}"`)
+		fmt.Println("\n  # 2. 登录获取 token")
+		fmt.Println(`  curl -X POST http://localhost:8080/api/login -H "Content-Type: application/json" -d "{\"username\":\"testuser\",\"password\":\"123456\"}"`)
+		fmt.Println("\n  # 3. 创建 Todo (需要替换 YOUR_TOKEN)")
+		fmt.Println(`  curl -X POST http://localhost:8080/api/todos -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d "{\"title\":\"学习Go\",\"content\":\"完成REST服务开发\"}"`)
+		fmt.Println("\n  # 4. 获取 Todo 列表")
+		fmt.Println(`  curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:8080/api/todos`)
+		fmt.Println("\n  # 5. 更新 Todo")
+		fmt.Println(`  curl -X PUT http://localhost:8080/api/todos/1 -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d "{\"completed\":true}"`)
+		fmt.Println("\n  # 6. 删除 Todo")
+		fmt.Println(`  curl -X DELETE http://localhost:8080/api/todos/1 -H "Authorization: Bearer YOUR_TOKEN"`)
 
 		// 启动服务器 - 使用合并后的 handler
 		if err := http.ListenAndServe(":8080", finalHandler); err != nil {

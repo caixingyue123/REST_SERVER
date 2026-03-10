@@ -1,14 +1,24 @@
 package middleware
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"restServer/response"
 	"strings"
 )
 
-// 硬编码的有效 token（实际项目中应该从数据库或配置中读取）
-const validToken = "my-secret-token-123456"
+const usernameKey contextKey = "username"
+
+// TokenValidator token 验证函数类型
+type TokenValidator func(token string) (string, bool)
+
+var tokenValidator TokenValidator
+
+// SetTokenValidator 设置 token 验证函数
+func SetTokenValidator(validator TokenValidator) {
+	tokenValidator = validator
+}
 
 func Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,17 +45,27 @@ func Auth(next http.Handler) http.Handler {
 		}
 
 		//校验 token
-		if token != validToken {
+		username, valid := tokenValidator(token)
+		if !valid {
 			requestID := GetRequestID(r.Context())
-			log.Printf("[Auth Failed] RequestID: %s - Invalid token: %s", requestID, token)
+			log.Printf("[Auth Failed] RequestID: %s - Invalid token", requestID)
 			response.Error(w, http.StatusUnauthorized, 40103, "认证令牌无效")
 			return
 		}
 
-		//token 有效，继续处理
+		//token 有效，将用户名存入 context
 		requestID := GetRequestID(r.Context())
-		log.Printf("[Auth Success] RequestID: %s - Token validated", requestID)
-		next.ServeHTTP(w, r)
+		log.Printf("[Auth Success] RequestID: %s - User: %s", requestID, username)
 
+		ctx := context.WithValue(r.Context(), usernameKey, username)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// GetUsername 从 context 中获取用户名
+func GetUsername(ctx context.Context) string {
+	if username, ok := ctx.Value(usernameKey).(string); ok {
+		return username
+	}
+	return ""
 }

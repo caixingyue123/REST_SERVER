@@ -7,9 +7,9 @@ import (
 
 // Response 统一返回结构体
 type Response struct {
-	Code    int    `json:code`
-	Message string `json:message`
-	Data    any    `json:data`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data"`
 }
 
 // WriteJSON 封装 JSON 响应函数
