@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"restServer/model"
 	"restServer/response"
@@ -59,6 +60,12 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 检查 Content-Type
+	if ct := r.Header.Get("Content-Type"); ct != "" && !strings.Contains(ct, "application/json") {
+		response.BadRequest(w, "Content-Type 必须为 application/json")
+		return
+	}
+
 	var req CreateTodoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.BadRequest(w, "JSON 格式错误: "+err.Error())
@@ -73,6 +80,10 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(req.Title) > 100 {
 		response.BadRequest(w, "标题长度不能超过100个字符")
+		return
+	}
+	if len(req.Content) > 1000 {
+		response.BadRequest(w, "内容长度不能超过1000个字符")
 		return
 	}
 
@@ -111,12 +122,24 @@ func UpdateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 检查 Content-Type
+	if ct := r.Header.Get("Content-Type"); ct != "" && !strings.Contains(ct, "application/json") {
+		response.BadRequest(w, "Content-Type 必须为 application/json")
+		return
+	}
+
 	var req UpdateTodoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.BadRequest(w, "JSON 格式错误: "+err.Error())
 		return
 	}
 	defer r.Body.Close()
+
+	// 检查是否提供了至少一个更新字段
+	if req.Title == nil && req.Content == nil && req.Completed == nil {
+		response.BadRequest(w, "至少需要提供一个更新字段")
+		return
+	}
 
 	todoMutex.Lock()
 	defer todoMutex.Unlock()
@@ -182,5 +205,12 @@ func DeleteTodo(w http.ResponseWriter, r *http.Request) {
 // extractIDFromPath 从路径中提取 ID
 func extractIDFromPath(path, prefix string) (int, error) {
 	idStr := strings.TrimPrefix(path, prefix)
-	return strconv.Atoi(idStr)
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return 0, err
+	}
+	if id <= 0 {
+		return 0, fmt.Errorf("ID 必须为正整数")
+	}
+	return id, nil
 }

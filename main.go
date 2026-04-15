@@ -90,7 +90,8 @@ func createUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	//参数校验
 	if err := user.Validate(); err != nil {
-		response.Error(w, http.StatusForbidden, 400, "参数校验错误")
+		response.BadRequest(w, "参数校验错误: "+err.Error())
+		return
 	}
 
 	//返回成功响应
@@ -349,8 +350,8 @@ func main() {
 		fmt.Println("\n  # 6. 删除 Todo")
 		fmt.Println(`  curl -X DELETE http://localhost:8080/api/todos/1 -H "Authorization: Bearer YOUR_TOKEN"`)
 
-		// 启动服务器 - 使用合并后的 handler
-		if err := http.ListenAndServe(":8080", finalHandler); err != nil {
+		// 启动服务器 - 使用 server.ListenAndServe 以支持优雅退出
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			fmt.Printf("Server failed to start: %v\n", err)
 		}
 	}()

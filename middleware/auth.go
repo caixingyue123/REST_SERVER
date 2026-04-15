@@ -44,6 +44,22 @@ func Auth(next http.Handler) http.Handler {
 			return
 		}
 
+		// 检查 token 是否为空
+		if token == "" {
+			requestID := GetRequestID(r.Context())
+			log.Printf("[Auth Failed] RequestID: %s - Empty token", requestID)
+			response.Error(w, http.StatusUnauthorized, 40102, "认证令牌不能为空")
+			return
+		}
+
+		// 检查 tokenValidator 是否已设置
+		if tokenValidator == nil {
+			requestID := GetRequestID(r.Context())
+			log.Printf("[Auth Error] RequestID: %s - Token validator not configured", requestID)
+			response.Error(w, http.StatusInternalServerError, 50001, "认证服务未配置")
+			return
+		}
+
 		//校验 token
 		username, valid := tokenValidator(token)
 		if !valid {
