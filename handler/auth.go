@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"restServer/model"
 	"restServer/response"
+	"strings"
 	"sync"
 )
 
@@ -39,6 +40,12 @@ type LoginResponse struct {
 func Register(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		response.Error(w, http.StatusMethodNotAllowed, 405, "Method not allowed")
+		return
+	}
+
+	// 检查 Content-Type
+	if ct := r.Header.Get("Content-Type"); ct != "" && !strings.Contains(ct, "application/json") {
+		response.BadRequest(w, "Content-Type 必须为 application/json")
 		return
 	}
 
@@ -88,6 +95,12 @@ func Register(w http.ResponseWriter, r *http.Request) {
 func Login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		response.Error(w, http.StatusMethodNotAllowed, 405, "Method not allowed")
+		return
+	}
+
+	// 检查 Content-Type
+	if ct := r.Header.Get("Content-Type"); ct != "" && !strings.Contains(ct, "application/json") {
+		response.BadRequest(w, "Content-Type 必须为 application/json")
 		return
 	}
 
